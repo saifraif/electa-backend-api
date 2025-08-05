@@ -10,7 +10,17 @@ alembic
 # Security & Authentication
 passlib[bcrypt]
 python-jose[cryptography]
+bcrypt==3.2.0  # Pinned version to fix compatibility issue
 
 # Task Queue / Caching
 celery
 redis
+
+# For Pydantic's email validation
+email-validator
+
+# For FastAPI's form data parsing
+python-multipart
+
+# For API Rate Limiting
+slowapi
