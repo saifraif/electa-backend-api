@@ -1,0 +1,16 @@
+# FastAPI framework
+fastapi
+uvicorn[standard]
+
+# Database
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Security & Authentication
+passlib[bcrypt]
+python-jose[cryptography]
+
+# Task Queue / Caching
+celery
+redis

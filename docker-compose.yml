@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=electa
+      - POSTGRES_PASSWORD=electa
+      - POSTGRES_DB=electa_db
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
