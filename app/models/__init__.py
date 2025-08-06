@@ -3,3 +3,7 @@ from .audit_log import AuditLog
 from .admin import Admin
 from .candidate import Candidate
 from .source import Source
+from .charter_version import CharterVersion
+from .charter_clause import CharterClause
+from .compliance_evidence import ComplianceEvidence
+from .party_compliance_record import PartyComplianceRecord
