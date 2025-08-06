@@ -24,3 +24,6 @@ python-multipart
 
 # For API Rate Limiting
 slowapi
+
+# For performance testing
+locust
