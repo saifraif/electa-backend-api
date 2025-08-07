@@ -10,8 +10,9 @@ app = FastAPI(title="ELECTA API")
 
 # Set up CORS middleware
 origins = [
-    "http://localhost:3000", # The origin for our React Admin Panel
-    "http://localhost:8080", # A common alternative port for web development
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002", # Add your current React port
 ]
 
 app.add_middleware(
