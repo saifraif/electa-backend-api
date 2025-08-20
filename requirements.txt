@@ -1,0 +1,38 @@
+# === Web framework ===
+fastapi==0.116.1
+starlette==0.47.2           # FastAPI's ASGI toolkit
+
+# === Server ===
+uvicorn[standard]==0.35.0   # ASGI server
+
+# === Config / settings (Pydantic v2) ===
+pydantic==2.11.1
+pydantic-core==2.33.0
+pydantic-settings==2.10.1
+python-dotenv==1.0.1
+
+# === Database & migrations ===
+SQLAlchemy==2.0.43
+alembic==1.16.4
+psycopg2-binary==2.9.9
+
+# === Security & Auth ===
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.0               # you pinned this due to compat—keeping it
+
+# === Task queue / caching (optional) ===
+celery==5.4.0
+redis==5.0.7
+
+# === FastAPI extras ===
+email-validator==2.2.0
+python-multipart==0.0.9
+
+# === Rate limiting ===
+slowapi==0.1.9
+
+# === Performance testing (optional) ===
+locust==2.29.1
+
+twilio==9.3.3
