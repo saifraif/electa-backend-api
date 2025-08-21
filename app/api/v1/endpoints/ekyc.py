@@ -1,57 +1,113 @@
+from __future__ import annotations
+
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+
+from app.core.security import oauth2_scheme, SECRET_KEY, ALGORITHM
 from app.db.session import get_db
 from app.models.citizen import Citizen, VerificationStatus
 
-router = APIRouter()
+# All routes here live under /ekyc (final path: /api/v1/ekyc/*)
+router = APIRouter(prefix="/ekyc")
 
-# Placeholder for a dependency that would get the current logged-in citizen
-# In a real flow, the citizen_id would be tied to the 'state' parameter
-def get_current_citizen(db: Session, citizen_id: int = 1): # Mocking user with ID 1
-    # This is a placeholder. A real implementation would get the user from a JWT.
-    # user = db.query(Citizen).filter(Citizen.id == citizen_id).first()
-    # return user
-    pass
 
-@router.post("/ekyc/initiate", status_code=status.HTTP_200_OK)
-def initiate_ekyc_flow(db: Session = Depends(get_db)):
+def get_current_citizen(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+) -> Citizen:
     """
-    Initiates the e-KYC process.
-    
-    Returns a mock redirect URL to a partner bank's authorization page.
+    Resolve the current citizen from a Bearer token (JWT).
+    Token must contain `sub` with the citizen UUID.
     """
-    # In a real flow, 'state' would be a unique, securely generated token.
-    mock_bank_auth_url = "https://mockbank.electa.com/auth?client_id=electa&state=xyz123&redirect_uri=/api/v1/ekyc/callback"
-    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if sub is None:
+            raise credentials_exception
+        citizen_id = uuid.UUID(sub)
+    except (JWTError, ValueError):
+        raise credentials_exception
+
+    citizen = db.query(Citizen).filter(Citizen.id == citizen_id).first()
+    if not citizen:
+        raise credentials_exception
+    return citizen
+
+
+@router.post("/initiate", status_code=status.HTTP_200_OK)
+def initiate_ekyc_flow(
+    current_citizen: Citizen = Depends(get_current_citizen),
+):
+    """
+    Initiates the e-KYC process for the authenticated citizen.
+
+    In a real flow:
+      - Generate a unique `state` tied to the citizen and persist it (e.g., Redis/DB).
+      - Build a partner authorization URL containing that state.
+      - Client would open the partner page and return via our /callback.
+
+    This mock returns a placeholder partner URL.
+    """
+    # Example of a unique state (persist it if implementing for real):
+    # state = secrets.token_urlsafe(24)
+    # persist_state_for_citizen(current_citizen.id, state)
+
+    mock_state = "xyz123"
+    mock_bank_auth_url = (
+        "https://mockbank.electa.com/auth?"
+        "client_id=electa"
+        f"&state={mock_state}"
+        "&redirect_uri=/api/v1/ekyc/callback"
+    )
     return {"redirect_url": mock_bank_auth_url}
 
-@router.get("/ekyc/callback", status_code=status.HTTP_200_OK)
-def handle_ekyc_callback(code: str, state: str, db: Session = Depends(get_db)):
+
+@router.get("/callback", status_code=status.HTTP_200_OK)
+def handle_ekyc_callback(
+    code: str,
+    state: str,
+    db: Session = Depends(get_db),
+):
     """
-    Handles the callback from the partner bank after user authorization.
-    
-    In a real flow, this would exchange the 'code' for an access token and
-    then fetch the user's verified NID data from the bank.
+    Handles the callback from the partner after user authorization.
+
+    In a real flow:
+      1. Validate `state` (CSRF protection) and map it back to the intended citizen.
+      2. Exchange `code` for access token at the partner.
+      3. Retrieve verified identity data and update our records.
+
+    This mock accepts only a specific code and marks the first citizen as verified.
     """
-    # 1. Verify the 'state' parameter to prevent CSRF attacks (skipped in mock)
-    
-    # 2. Exchange the authorization 'code' for user data (mocked)
+    # 1) Validate state (skipped in mock)
+    # 2) Exchange authorization code (mocked)
     if code != "mock_success_code":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid authorization code")
-    
-    # Mocked user data we would get from the bank
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid authorization code",
+        )
+
+    # Mocked user data we would get from the bank (unused here but illustrative)
     mock_user_data_from_bank = {
         "full_name": "Saima Wazed",
-        "nid": "1982123456789"
+        "nid": "1982123456789",
     }
-    
-    # 3. Update the citizen's status in our database
-    # For this test, we'll just assume we're updating the first user in the table.
-    # A real implementation would look up the user based on the 'state' parameter.
+
+    # 3) Update a citizen record (mock: just take the first one)
     citizen_to_verify = db.query(Citizen).first()
-    if citizen_to_verify:
-        citizen_to_verify.verification_status = VerificationStatus.NID_VERIFIED
-        db.commit()
-        return {"status": "success", "message": f"User {citizen_to_verify.mobile_number} has been NID Verified."}
-    
-    return {"status": "error", "message": "No user found to verify."}
+    if not citizen_to_verify:
+        return {"status": "error", "message": "No user found to verify."}
+
+    citizen_to_verify.verification_status = VerificationStatus.NID_VERIFIED
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"User {citizen_to_verify.mobile_number} has been NID Verified.",
+    }

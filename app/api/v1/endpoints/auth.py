@@ -3,11 +3,9 @@ from __future__ import annotations
 import random
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.schemas.user import UserCreate  # expects mobile_number, password
 from app.schemas.token import Token
@@ -20,12 +18,10 @@ from app.core.security import (
 from app.db.session import get_db
 from app.services.otp import otp_service
 from app.services.sms import get_sms_provider
+from app.limits import limiter  # ✅ use the shared limiter wired in main.py
 
-# 👇 This is the important bit: all routes in this file live under /auth
+# All routes here live under /auth (final path: /api/v1/auth/*)
 router = APIRouter(prefix="/auth")
-
-# Per-route rate limits
-limiter = Limiter(key_func=get_remote_address)
 
 
 class LoginRequest(BaseModel):
@@ -34,42 +30,70 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class VerifyOtpRequest(BaseModel):
+    """
+    Single body payload for OTP verification + password set during registration.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    mobile_number: str
+    password: str
+    otp: int
+
+
 def _generate_otp() -> int:
     return random.randint(100000, 999999)
 
 
-@router.post("/register/request-otp", status_code=200)
+@router.post("/register/request-otp", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
 async def request_otp(request: Request, user_in: UserCreate):
     """
     Generate an OTP, store in Redis (via otp_service), and send via SMS provider.
     """
+    mobile = user_in.mobile_number.strip()
+    if not mobile:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number required")
+
     code = _generate_otp()
-    await otp_service.set(user_in.mobile_number, str(code))
+    await otp_service.set(mobile, str(code))
 
     sms = get_sms_provider()
-    await sms.send_otp(user_in.mobile_number, str(code))
+    await sms.send_otp(mobile, str(code))
 
     return {"message": "OTP has been sent."}
 
 
 @router.post("/register/verify-otp", response_model=Token)
 @limiter.limit("10/minute")
-async def verify_otp(user_in: UserCreate, otp: int, db: Session = Depends(get_db)):
+async def verify_otp(
+    request: Request,
+    payload: VerifyOtpRequest,
+    db: Session = Depends(get_db),
+):
     """
-    Verify OTP, create user, return JWT.
+    Verify OTP, create user (if not exists), and return JWT.
+    Accepts JSON:
+      {
+        "mobile_number": "...",
+        "password": "...",
+        "otp": 123456
+      }
     """
-    ok = await otp_service.verify_and_consume(user_in.mobile_number, str(otp))
-    if not ok:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    mobile = payload.mobile_number.strip()
+    if not mobile:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number required")
 
-    existing = db.query(Citizen).filter(Citizen.mobile_number == user_in.mobile_number).first()
+    ok = await otp_service.verify_and_consume(mobile, str(payload.otp))
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+
+    existing = db.query(Citizen).filter(Citizen.mobile_number == mobile).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Mobile number already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number already registered")
 
     new_user = Citizen(
-        mobile_number=user_in.mobile_number,
-        password_hash=get_password_hash(user_in.password),
+        mobile_number=mobile,
+        password_hash=get_password_hash(payload.password),
     )
     db.add(new_user)
     db.commit()
@@ -81,15 +105,23 @@ async def verify_otp(user_in: UserCreate, otp: int, db: Session = Depends(get_db
 
 @router.post("/login", response_model=Token)
 @limiter.limit("5/minute")
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(
+    request: Request,
+    body: LoginRequest,
+    db: Session = Depends(get_db),
+):
     """
     Password login: verify user and issue JWT.
     """
+    mobile = body.mobile_number.strip()
+    if not mobile:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number required")
+
     user: Optional[Citizen] = (
-        db.query(Citizen).filter(Citizen.mobile_number == body.mobile_number).first()
+        db.query(Citizen).filter(Citizen.mobile_number == mobile).first()
     )
     if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token(subject=str(user.id))
     return {"access_token": token, "token_type": "bearer"}
