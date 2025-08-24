@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
+
 # Import endpoint routers for API v1
-from .endpoints import admin, auth, ekyc, ideologies
+from .endpoints import admin, auth, ekyc, ideologies, ingest, public
 
 """
 API v1 router aggregator.
@@ -19,7 +20,10 @@ Effective paths:
 api_router = APIRouter()
 
 # Tag routers for Swagger grouping
-#api_router.include_router(admin.router, tags=["admin"])
-#api_router.include_router(auth.router, tags=["auth"])
-#api_router.include_router(ekyc.router, tags=["ekyc"])
-#api_router.include_router(ideologies.router, tags=["ideologies"])
+api_router.include_router(admin.router, tags=["admin"])
+api_router.include_router(auth.router, tags=["auth"])
+api_router.include_router(ekyc.router, tags=["ekyc"])
+api_router.include_router(ideologies.router, tags=["ideologies"])
+api_router.include_router(ingest.router, tags=["ingest"]) 
+api_router.include_router(public.router, tags=["public"])
+

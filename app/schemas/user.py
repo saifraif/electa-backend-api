@@ -1,17 +1,36 @@
-from pydantic import BaseModel, Field
-import uuid
+from pydantic import BaseModel, Field, ConfigDict
+from uuid import UUID
 
-# Schema for the request body when creating a new user (after OTP verification)
+# ---------------------------
+# Request Schemas
+# ---------------------------
 class UserCreate(BaseModel):
-    # UPDATED LINE: Using Field with 'pattern' instead of constr with 'regex'
-    mobile_number: str = Field(pattern=r"^\+?[0-9]{10,15}$")
-    password: str
+    """
+    Schema for the request body when creating a new user (after OTP verification).
+    """
+    mobile_number: str = Field(
+        ...,
+        pattern=r"^\+?[0-9]{10,15}$",
+        description="Mobile number in E.164 format (10-15 digits, optional + prefix).",
+        example="+919876543210",
+    )
+    password: str = Field(
+        ...,
+        min_length=6,
+        description="Plaintext password (will be hashed before storage).",
+        example="securePass123",
+    )
 
-# Schema for the response body when returning user information
+
+# ---------------------------
+# Response Schemas
+# ---------------------------
 class User(BaseModel):
-    id: uuid.UUID
+    """
+    Schema for returning user information.
+    """
+    id: UUID
     mobile_number: str
     role: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

@@ -4,7 +4,7 @@ import random
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.schemas.user import UserCreate  # expects mobile_number, password
@@ -18,32 +18,39 @@ from app.core.security import (
 from app.db.session import get_db
 from app.services.otp import otp_service
 from app.services.sms import get_sms_provider
-from app.limits import limiter  # ✅ use the shared limiter wired in main.py
+from app.limits import limiter  # ✅ shared limiter wired in main.py
 
 # All routes here live under /auth (final path: /api/v1/auth/*)
 router = APIRouter(prefix="/auth")
 
 
+# ---------------------------
+# Pydantic request models
+# ---------------------------
 class LoginRequest(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     mobile_number: str
     password: str
 
 
 class VerifyOtpRequest(BaseModel):
     """
-    Single body payload for OTP verification + password set during registration.
+    Payload for OTP verification + password set during registration.
     """
-    model_config = ConfigDict(from_attributes=True)
     mobile_number: str
     password: str
     otp: int
 
 
+# ---------------------------
+# Helpers
+# ---------------------------
 def _generate_otp() -> int:
     return random.randint(100000, 999999)
 
 
+# ---------------------------
+# Routes
+# ---------------------------
 @router.post("/register/request-otp", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
 async def request_otp(request: Request, user_in: UserCreate):
@@ -52,7 +59,10 @@ async def request_otp(request: Request, user_in: UserCreate):
     """
     mobile = user_in.mobile_number.strip()
     if not mobile:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number required",
+        )
 
     code = _generate_otp()
     await otp_service.set(mobile, str(code))
@@ -72,24 +82,27 @@ async def verify_otp(
 ):
     """
     Verify OTP, create user (if not exists), and return JWT.
-    Accepts JSON:
-      {
-        "mobile_number": "...",
-        "password": "...",
-        "otp": 123456
-      }
     """
     mobile = payload.mobile_number.strip()
     if not mobile:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number required",
+        )
 
     ok = await otp_service.verify_and_consume(mobile, str(payload.otp))
     if not ok:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP",
+        )
 
     existing = db.query(Citizen).filter(Citizen.mobile_number == mobile).first()
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number already registered")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number already registered",
+        )
 
     new_user = Citizen(
         mobile_number=mobile,
@@ -115,13 +128,19 @@ def login(
     """
     mobile = body.mobile_number.strip()
     if not mobile:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mobile number required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number required",
+        )
 
     user: Optional[Citizen] = (
         db.query(Citizen).filter(Citizen.mobile_number == mobile).first()
     )
     if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
 
     token = create_access_token(subject=str(user.id))
     return {"access_token": token, "token_type": "bearer"}
