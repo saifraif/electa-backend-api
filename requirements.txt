@@ -36,3 +36,8 @@ slowapi==0.1.9
 locust==2.29.1
 
 twilio==9.3.3
+
+beautifulsoup4
+lxml
+
+playwright

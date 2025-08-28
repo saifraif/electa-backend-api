@@ -1,18 +1,21 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+# Stable image that already includes Chromium/Firefox/WebKit and all deps
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
 
-# Set the working directory in the container
 WORKDIR /app
 
-# NEW LINE: Update the OS and install the postgresql client
-RUN apt-get update && apt-get install -y postgresql-client
-
-# Copy the dependencies file and install them
-COPY ./requirements.txt .
+# Copy and install backend deps
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application's source code
+# (Make sure requirements.txt includes:)
+# beautifulsoup4
+# lxml
+# playwright
+
+# Copy project
 COPY . .
 
-# Command to run the application
+EXPOSE 8000
+
+# Dev-friendly default; prod will override in compose.prod.yml
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
